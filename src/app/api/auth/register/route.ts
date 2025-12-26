@@ -18,6 +18,7 @@
  *             required:
  *               - email
  *               - password
+ *               - password_confirmation
  *               - lastname
  *               - firstname
  *             properties:
@@ -26,6 +27,12 @@
  *                 format: email
  *                 example: john.doe@example.com
  *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 example: SecurePass123
+ *                 description: Doit contenir au moins une majuscule, une minuscule et un chiffre
+ *               password_confirmation:
  *                 type: string
  *                 format: password
  *                 minLength: 8
@@ -116,6 +123,12 @@ export async function POST(request: NextRequest) {
     try {
         // Parse le body de la requête
         const body = await request.json();
+
+        //Comparaison des mots de passe
+        if (body.password !== body.password_confirmation) {
+            //return { error: "Passwords do not match" };
+            return errorResponse("Les mots de passe ne correspondent pas", undefined, 400);
+        }
 
         // Validation avec Zod
         const validatedData = registerSchema.parse(body);

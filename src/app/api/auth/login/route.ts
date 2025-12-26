@@ -27,6 +27,10 @@
  *                 type: string
  *                 format: password
  *                 example: SecurePass123
+ *               password_confirmation:
+ *                 type: string
+ *                 format: password
+ *                 example: SecurePass123
  *     responses:
  *       200:
  *         description: Connexion réussie
@@ -77,7 +81,7 @@ import {
     successResponse,
     unauthorizedResponse,
     validationErrorResponse,
-    serverErrorResponse,
+    serverErrorResponse, errorResponse,
 } from "@/utils/api-response";
 import { ZodError } from "zod";
 
@@ -90,6 +94,12 @@ export async function POST(request: NextRequest) {
     try {
         // Parse le body de la requête
         const body = await request.json();
+
+        //Comparaison des mots de passe
+        if (body.password !== body.password_confirmation) {
+            //return { error: "Passwords do not match" };
+            return errorResponse("Les mots de passe ne correspondent pas", undefined, 400);
+        }
 
         // Validation avec Zod
         const validatedData = loginSchema.parse(body);

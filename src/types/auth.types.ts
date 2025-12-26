@@ -45,6 +45,7 @@ export interface JWTPayload {
 export interface RegisterRequest {
     email: string;
     password: string;
+    password_confirmation: string;
     lastname: string;
     firstname: string;
     org?: string;
@@ -57,6 +58,7 @@ export interface RegisterRequest {
 export interface LoginRequest {
     email: string;
     password: string;
+    password_confirmation: string;
 }
 
 /**
