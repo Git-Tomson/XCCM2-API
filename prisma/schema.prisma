@@ -185,6 +185,8 @@ model Invitation {
 
   // Champs de données
   invitation_state InvitationState @default(Pending)
+  invitation_token String          @unique
+
   invited_at       DateTime        @default(now())
   response_at      DateTime?       // Optionnel tant qu'il n'a pas répondu
 
