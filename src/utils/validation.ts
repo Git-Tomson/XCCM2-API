@@ -348,3 +348,17 @@ export const contactSchema = z.object({
  */
 export type NewsletterSubscribeInput = z.infer<typeof newsletterSubscribeSchema>;
 export type ContactInput = z.infer<typeof contactSchema>;
+
+// ==========================================
+// SCHÉMAS DE VALIDATION POUR INVITATIONS
+// ==========================================
+ export const sendInvitationSchema = z.object({
+     guestEmail: z
+         .string()
+         .min(1, "L'email est requis")
+         .email("Format d'email invalide")
+         .toLowerCase()
+         .trim(),
+ });
+
+ export type SendInvitationInput = z.infer<typeof sendInvitationSchema>;

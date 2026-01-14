@@ -323,6 +323,10 @@ const swaggerOptions: swaggerJSDoc.Options = {
                 name: "Notions",
                 description: "Gestion des notions (granules de niveau 4)",
             },
+            {
+                name: "Invitations",
+                description: "Gestion des invitations de collaboration",
+            },
         ],
     },
     apis: ["./src/app/api/**/*.ts"], // Chemins vers les fichiers contenant les annotations JSDoc
