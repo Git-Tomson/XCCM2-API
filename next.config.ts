@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
     // Active le mode strict de React
     reactStrictMode: true,
 
+    serverExternalPackages: ['pdfkit'], // Indique à Next.js de ne pas "bundler" pdfkit
+
     // Configuration des images
     images: {
         domains: ["localhost"],
