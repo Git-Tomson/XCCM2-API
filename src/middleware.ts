@@ -35,6 +35,8 @@ const PUBLIC_ROUTES: string[] = [
     "/api/health",
     "/api/docs",
     "/docs",
+    "/api/documents",           // Bibliothèque publique (GET liste + GET par ID)
+    "/api/invitations/",        // Consultation invitation par token (GET)
 ];
 
 /**
