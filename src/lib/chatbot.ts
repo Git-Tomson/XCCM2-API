@@ -145,7 +145,7 @@ function buildPedagogicalPrompt(content: string, style: RephraseStyle): {
  * Tu peux le rendre configurable via une variable d'environnement
  * (par ex. HF_MODEL_ID) si besoin.
  */
-const DEFAULT_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.2";
+const DEFAULT_HF_MODEL = "meta-llama/Meta-Llama-3-8B-Instruct";
 
 /**
  * Reformule le contenu d'une Notion via un modèle LLM hébergé sur Hugging Face.
@@ -173,29 +173,22 @@ export async function rephraseNotion(
 
         const model = process.env.HF_MODEL_ID || DEFAULT_HF_MODEL;
 
-        // 🔧 Construction du prompt complet pour textGeneration
-        const fullPrompt = `<s>[INST] ${system}
-    
-    ${user} [/INST]`;
+        // ✅ Utilise chatCompletion pour les modèles Instruct/Chat
+        console.log("📨 Calling HuggingFace chatCompletion...");
 
-        console.log("🔑 HF_API_TOKEN exists:", !!process.env.HF_API_TOKEN);
-        console.log("🤖 Model:", model);
-        console.log("📨 Calling HuggingFace API...");
-
-        // ✅ Utilise textGeneration au lieu de chatCompletion
-        const response = await hf.textGeneration({
+        const response = await hf.chatCompletion({
             model,
-            inputs: fullPrompt,
-            parameters: {
-                max_new_tokens: 512,
-                temperature: 0.4,
-                return_full_text: false, // Important : ne retourne que la génération
-            },
+            messages: [
+                { role: "system", content: system },
+                { role: "user", content: user }
+            ],
+            max_tokens: 512,
+            temperature: 0.4,
         });
 
         console.log("✅ HuggingFace response received");
 
-        const text = response.generated_text?.trim() || "";
+        const text = response.choices[0]?.message?.content?.trim() || "";
 
         if (!text) {
             console.error(

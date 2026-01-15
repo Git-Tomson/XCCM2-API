@@ -38,18 +38,18 @@ ${testContent}
         console.log(testContent);
         console.log('\n⏳ Reformulation en cours...\n');
 
-        // Appel à l'API
-        const response = await client.textGeneration({
-            model: "mistralai/Mistral-7B-Instruct-v0.2",
-            inputs: prompt,
-            parameters: {
-                max_new_tokens: 512,
-                temperature: 0.4,
-                return_full_text: false,
-            },
+        // Appel à l'API via chatCompletion
+        const response = await client.chatCompletion({
+            model: "meta-llama/Meta-Llama-3-8B-Instruct",
+            messages: [
+                { role: "system", content: "Tu es un expert en pédagogie et en vulgarisation." },
+                { role: "user", content: prompt } // prompt contient déjà la consigne utilisateur dans ce script
+            ],
+            max_tokens: 512,
+            temperature: 0.4,
         });
 
-        const result = response.generated_text?.trim() || "";
+        const result = response.choices[0]?.message?.content?.trim() || "";
 
         if (!result) {
             throw new Error('Réponse vide du modèle');
@@ -71,6 +71,9 @@ ${testContent}
             console.error('\n💡 Vérifiez votre token Hugging Face dans .env.local');
         } else {
             console.error('\n📋 Détails:', error);
+            if (error.httpResponse && error.httpResponse.body) {
+                console.error('\n🔍 HTTP Response Body:', JSON.stringify(error.httpResponse.body, null, 2));
+            }
         }
 
         process.exit(1);
