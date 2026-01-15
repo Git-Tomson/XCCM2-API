@@ -10,7 +10,7 @@
  * - Définir la variable d'environnement : `HF_API_TOKEN`
  */
 
-import { HfInference } from "@huggingface/inference";
+import { InferenceClient } from "@huggingface/inference";
 
 /**
  * Styles supportés par le service de reformulation.
@@ -36,9 +36,9 @@ export interface RephraseOptions {
  * On la crée paresseusement pour éviter des erreurs si le token n'est pas défini
  * au moment du chargement du module.
  */
-let hfClient: HfInference | null = null;
+let hfClient: InferenceClient | null = null;
 
-function getHfClient(): HfInference {
+function getHfClient(): InferenceClient {
     if (!process.env.HF_API_TOKEN) {
         console.error(
             "[chatbot] La variable d'environnement HF_API_TOKEN est manquante. " +
@@ -50,7 +50,7 @@ function getHfClient(): HfInference {
     if (!hfClient) {
         // ✅ Configuration du nouvel endpoint (router.huggingface.co)
         // L'ancien endpoint api-inference.huggingface.co est obsolète depuis 2025
-        hfClient = new HfInference(process.env.HF_API_TOKEN, {
+        hfClient = new InferenceClient(process.env.HF_API_TOKEN, {
             // Utilisation du nouvel endpoint recommandé par Hugging Face
             // Format: https://router.huggingface.co/v1/
             endpointUrl: "https://router.huggingface.co/v1"
