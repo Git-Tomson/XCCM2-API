@@ -42,13 +42,21 @@ function getHfClient(): HfInference {
     if (!process.env.HF_API_TOKEN) {
         console.error(
             "[chatbot] La variable d'environnement HF_API_TOKEN est manquante. " +
-                "La reformulation ne pourra pas fonctionner."
+            "La reformulation ne pourra pas fonctionner."
         );
         throw new Error("HF_API_TOKEN is not defined");
     }
 
     if (!hfClient) {
-        hfClient = new HfInference(process.env.HF_API_TOKEN);
+        // ✅ Configuration du nouvel endpoint (router.huggingface.co)
+        // L'ancien endpoint api-inference.huggingface.co est obsolète depuis 2025
+        hfClient = new HfInference(process.env.HF_API_TOKEN, {
+            // Utilisation du nouvel endpoint recommandé par Hugging Face
+            // Format: https://router.huggingface.co/v1/
+            endpointUrl: "https://router.huggingface.co/v1"
+        });
+
+        console.log("[chatbot] Client Hugging Face initialisé avec le nouvel endpoint router.huggingface.co/v1");
     }
 
     return hfClient;
@@ -165,18 +173,18 @@ export async function rephraseNotion(
 
     try {
         console.log("[chatbot] RephraseNotion called with style:", options.style);
-    
+
         const model = process.env.HF_MODEL_ID || DEFAULT_HF_MODEL;
-        
+
         // 🔧 Construction du prompt complet pour textGeneration
         const fullPrompt = `<s>[INST] ${system}
     
     ${user} [/INST]`;
-    
+
         console.log("🔑 HF_API_TOKEN exists:", !!process.env.HF_API_TOKEN);
         console.log("🤖 Model:", model);
         console.log("📨 Calling HuggingFace API...");
-    
+
         // ✅ Utilise textGeneration au lieu de chatCompletion
         const response = await hf.textGeneration({
             model,
@@ -187,11 +195,11 @@ export async function rephraseNotion(
                 return_full_text: false, // Important : ne retourne que la génération
             },
         });
-    
+
         console.log("✅ HuggingFace response received");
-    
+
         const text = response.generated_text?.trim() || "";
-    
+
         if (!text) {
             console.error(
                 "[chatbot] Réponse vide ou invalide du modèle Hugging Face",
@@ -199,21 +207,21 @@ export async function rephraseNotion(
             );
             throw new Error("Empty response from Hugging Face model");
         }
-    
+
         return text;
-        
+
     } catch (error: any) {
         console.error("[chatbot] Erreur lors de la reformulation de la Notion :", error);
         console.error("Status:", error.status || error.statusCode);
         console.error("Message:", error.message);
-        
+
         // On re-lance l'erreur pour que la route API décide du message à renvoyer
         if (error instanceof Error) {
             throw new Error(
                 `Failed to rephrase notion content: ${error.message}`
             );
         }
-    
+
         throw new Error("Failed to rephrase notion content: unknown error");
     }
 }
