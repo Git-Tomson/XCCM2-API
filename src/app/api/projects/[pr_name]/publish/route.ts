@@ -84,7 +84,7 @@ import {
     notFoundResponse,
     validationErrorResponse,
 } from "@/utils/api-response";
-import type {DocumentFormat, ProjectForExport} from "@/types/document.types";
+import type { DocumentFormat, ProjectForExport } from "@/types/document.types";
 import { z } from "zod";
 
 type RouteParams = {
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest, context: RouteParams) {
         // Crée l'entrée dans la table Document
         const document = await prisma.document.create({
             data: {
-                doc_name: publishResult.fileName,
+                doc_name: pr_name, // Utilise le nom du projet au lieu du nom de fichier généré
                 pages: estimatedPages,
                 doc_size: publishResult.size,
                 url_content: publishResult.url,
@@ -217,6 +217,12 @@ export async function POST(request: NextRequest, context: RouteParams) {
                 downloaded: 0,
                 consult: 0,
             },
+        });
+
+        // Marquer le projet comme publié
+        await prisma.project.update({
+            where: { pr_id: project.pr_id },
+            data: { is_published: true },
         });
 
         console.log(`✅ Document publié avec succès: ${document.doc_id}`);

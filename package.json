@@ -11,6 +11,7 @@
     "dev:https": "npm run gen:certs && HTTPS=true SSL_CRT_FILE=certs/localhost.crt SSL_KEY_FILE=certs/localhost.key next dev -p 443"
   },
   "dependencies": {
+    "@babel/runtime-corejs3": "^7.28.6",
     "@huggingface/inference": "^4.13.8",
     "@prisma/client": "^6.19.1",
     "@supabase/supabase-js": "^2.90.1",
@@ -25,6 +26,7 @@
     "nodemailer": "^7.0.12",
     "pdfkit": "^0.17.2",
     "prisma": "6.19.1",
+    "puppeteer": "^24.35.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "swagger-jsdoc": "^6.2.8",

@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
         // Validation avec Zod
         const validatedData = createProjectSchema.parse(body);
 
-        // Vérifie si un projet avec ce nom existe déjà pour cet utilisateur
+        // Vérifie si un projet avec ce nom existe déjà pour cet utilisateur (Sensible à la casse)
         const existingProject = await prisma.project.findUnique({
             where: {
                 pr_name_owner_id: {
@@ -163,11 +163,19 @@ export async function POST(request: NextRequest) {
         });
 
         if (existingProject) {
-            return errorResponse(
-                "Un projet avec ce nom existe déjà",
-                undefined,
-                409
-            );
+            // Si l'utilisateur a demandé d'écraser, on supprime l'ancien projet
+            if (validatedData.overwrite) {
+                console.log("♻️ Écrasement du projet existant:", existingProject.pr_id);
+                await prisma.project.delete({
+                    where: { pr_id: existingProject.pr_id }
+                });
+            } else {
+                return errorResponse(
+                    "Un projet avec ce nom existe déjà",
+                    undefined,
+                    409
+                );
+            }
         }
 
         // Création du projet
@@ -233,25 +241,34 @@ export async function GET(request: NextRequest) {
             },
         });
 
-        // Récupère les projets où l'utilisateur a une invitation acceptée
-        const invitedProjects = await prisma.project.findMany({
+        // Ajouter un indicateur 'role' et 'status' pour les projets créés
+        const ownedProjectsWithMeta = ownedProjects.map(p => ({
+            ...p,
+            user_role: 'OWNER',
+            invitation_status: null
+        }));
+
+        // Récupère les invitations de l'utilisateur
+        const invitations = await prisma.invitation.findMany({
             where: {
-                invitations: {
-                    some: {
-                        AND: [
-                            { guest_id: userId },
-                            // { invitation_state: "Accepted" },
-                        ],
-                    },
-                },
+                guest_id: userId
             },
-            orderBy: {
-                created_at: "desc",
-            },
+            include: {
+                project: true
+            }
         });
 
-        // Fusionner les deux listes en supprimant les doublons (un projet ne peut pas être dans les deux)
-        const allProjects = [...ownedProjects, ...invitedProjects];
+        const invitedProjectsWithMeta = invitations.map(invitation => {
+            if (!invitation.project) return null;
+            return {
+                ...invitation.project,
+                user_role: invitation.role, // 'EDITOR' ou 'VIEWER'
+                invitation_status: invitation.invitation_state // 'Pending', 'Accepted', 'Declined'
+            };
+        }).filter(p => p !== null);
+
+        // Fusionner les listes
+        const allProjects = [...ownedProjectsWithMeta, ...invitedProjectsWithMeta];
 
         return successResponse("Projets récupérés avec succès", {
             projects: allProjects,

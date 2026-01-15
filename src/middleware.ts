@@ -1,14 +1,9 @@
 /**
  * @fileoverview Middleware Next.js global
- *
  * - Gère le CORS (preflight OPTIONS + headers)
  * - Protège les routes API avec JWT
  * - Laisse passer les routes publiques
  * - Injecte l'userId dans les headers (x-user-id)
- *
- * ⚠️ IMPORTANT :
- * Le CORS DOIT être géré AVANT toute vérification d'authentification,
- * sinon le navigateur bloque la requête avant qu'elle n'arrive à la route.
  */
 
 import { NextResponse } from "next/server";
@@ -16,30 +11,30 @@ import type { NextRequest } from "next/server";
 import { verifyToken, extractTokenFromHeader } from "@/lib/auth";
 
 /**
- * Origine autorisée (frontend)
- * À adapter en production
+ * Récupère les headers CORS dynamiquement pour autoriser l'origine de la requête
  */
-const ALLOWED_ORIGIN = "http://localhost:3000";
+function getCorsHeaders(request: NextRequest) {
+    const origin = request.headers.get("origin") || "*";
 
-/**
- * Headers CORS communs
- */
-const CORS_HEADERS = {
-    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Credentials": "true",
-};
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Id, X-Requested-With, Accept",
+        "Access-Control-Allow-Credentials": "true",
+    };
+}
 
 /**
  * Routes publiques accessibles sans authentification
  */
-const PUBLIC_ROUTES = [
+const PUBLIC_ROUTES: string[] = [
     "/api/auth/login",
     "/api/auth/register",
     "/api/health",
     "/api/docs",
     "/docs",
+    "/api/documents",           // Bibliothèque publique (GET liste + GET par ID)
+    "/api/invitations/",        // Consultation invitation par token (GET)
 ];
 
 /**
@@ -50,15 +45,15 @@ const PUBLIC_ROUTES = [
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
+    const corsHeaders = getCorsHeaders(request);
+
     /**
      * 1️⃣ Gestion des requêtes OPTIONS (CORS preflight)
-     * Le navigateur envoie automatiquement cette requête avant
-     * toute requête "non simple" (Authorization, JSON, etc.)
      */
     if (request.method === "OPTIONS") {
         return new NextResponse(null, {
             status: 200,
-            headers: CORS_HEADERS,
+            headers: corsHeaders,
         });
     }
 
@@ -68,7 +63,7 @@ export async function middleware(request: NextRequest) {
     if (
         pathname.startsWith("/_next") ||
         pathname.startsWith("/static") ||
-        pathname.includes(".")
+        (pathname.includes(".") && !pathname.startsWith("/api/"))
     ) {
         return NextResponse.next();
     }
@@ -79,14 +74,14 @@ export async function middleware(request: NextRequest) {
      */
     const response = NextResponse.next();
 
-    Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    Object.entries(corsHeaders).forEach(([key, value]) => {
         response.headers.set(key, value);
     });
 
     /**
      * 4️⃣ Laisse passer les routes publiques sans authentification
      */
-    if (PUBLIC_ROUTES.some((route) => pathname.startsWith(route))) {
+    if (PUBLIC_ROUTES.some((route: string) => pathname.startsWith(route))) {
         return response;
     }
 
@@ -103,7 +98,7 @@ export async function middleware(request: NextRequest) {
                     success: false,
                     message: "Token manquant. Authentification requise.",
                 },
-                { status: 401, headers: CORS_HEADERS }
+                { status: 401, headers: corsHeaders }
             );
         }
 
@@ -116,7 +111,7 @@ export async function middleware(request: NextRequest) {
                     success: false,
                     message: "Token invalide ou expiré.",
                 },
-                { status: 401, headers: CORS_HEADERS }
+                { status: 401, headers: corsHeaders }
             );
         }
 
@@ -125,13 +120,23 @@ export async function middleware(request: NextRequest) {
          * Accessible dans les routes via request.headers.get('x-user-id')
          */
         const requestHeaders = new Headers(request.headers);
-        requestHeaders.set("x-user-id", payload.userId);
 
-        return NextResponse.next({
+        // Type assertion pour s'assurer que payload a une propriété userId
+        const userId = (payload as any).userId;
+        requestHeaders.set("x-user-id", String(userId));
+
+        const responseWithHeaders = NextResponse.next({
             request: {
                 headers: requestHeaders,
             },
         });
+
+        // Appliquer CORS à cette nouvelle réponse
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+            responseWithHeaders.headers.set(key, value);
+        });
+
+        return responseWithHeaders;
     }
 
     /**
