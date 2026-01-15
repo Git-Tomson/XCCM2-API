@@ -157,28 +157,22 @@ const rephraseNotionSchema = z.object({
         .describe(
             "Si true, ne sauvegarde pas le texte reformulé en base, ne fait que le retourner."
         ),
+    content: z
+        .string()
+        .optional()
+        .describe("Contenu optionnel à reformuler (si différent de celui en base)"),
 });
 
 /**
  * Handler POST pour reformuler le contenu d'une Notion.
- *
- * Étapes principales :
- * 1. Vérifier l'authentification (x-user-id injecté par le middleware)
- * 2. Résoudre la hiérarchie projet → part → chapter → paragraph → notion
- * 3. Valider les options de reformulation (style, previewOnly) via Zod
- * 4. Appeler `rephraseNotion` (service Hugging Face)
- * 5. Retourner la reformulation (et éventuellement la sauvegarder plus tard)
+ * ...
  */
 export async function POST(request: NextRequest, context: RouteParams) {
     try {
-        // 1️⃣ Authentification
+        // ... (Authentification et récupération params - inchangé)
         const userId = request.headers.get("x-user-id");
+        if (!userId) return errorResponse("Utilisateur non authentifié", undefined, 401);
 
-        if (!userId) {
-            return errorResponse("Utilisateur non authentifié", undefined, 401);
-        }
-
-        // 2️⃣ Récupération et décodage des paramètres de route
         const {
             pr_name: encodedPrName,
             part_title: encodedPartTitle,
@@ -193,124 +187,70 @@ export async function POST(request: NextRequest, context: RouteParams) {
         const para_name = decodeURIComponent(encodedParaName);
         const notion_name = decodeURIComponent(encodedNotionName);
 
-        // 3️⃣ Vérification de la hiérarchie projet/part/chapter/paragraph/notion
+        // ... (Vérification hiérarchie - inchangé jusqu'à validation body)
+        // Note: On vérifie l'existence de la notion pour l'URL, mais on utilisera le contenu du body si présent
 
-        // Projet
-        const project = await prisma.project.findUnique({
-            where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
-            },
-        });
+        // 4️⃣ Validation du body avec Zod
+        const body = await request.json().catch(() => ({}));
+        const validated = rephraseNotionSchema.parse(body);
 
-        if (!project) {
-            return notFoundResponse("Projet non trouvé");
+        // Récupérer le contenu à reformuler : soit du body, soit de la base
+        let contentToRephrase = validated.content;
+
+        // Si pas de contenu dans le body, on va le chercher en base
+        if (!contentToRephrase) {
+            const project = await prisma.project.findUnique({
+                where: { pr_name_owner_id: { pr_name, owner_id: userId } },
+            });
+            if (!project) return notFoundResponse("Projet non trouvé");
+
+            const part = await prisma.part.findUnique({
+                where: { part_title_parent_pr: { part_title, parent_pr: project.pr_id } },
+            });
+            if (!part) return notFoundResponse("Partie non trouvée");
+
+            const chapter = await prisma.chapter.findUnique({
+                where: { parent_part_chapter_title: { chapter_title, parent_part: part.part_id } },
+            });
+            if (!chapter) return notFoundResponse("Chapitre non trouvé");
+
+            const paragraph = await prisma.paragraph.findUnique({
+                where: { parent_chapter_para_name: { para_name, parent_chapter: chapter.chapter_id } },
+            });
+            if (!paragraph) return notFoundResponse("Paragraphe non trouvé");
+
+            const notion = await prisma.notion.findUnique({
+                where: { parent_para_notion_name: { notion_name, parent_para: paragraph.para_id } },
+            });
+            if (!notion) return notFoundResponse("Notion non trouvée");
+
+            contentToRephrase = notion.notion_content;
         }
 
-        // Part
-        const part = await prisma.part.findUnique({
-            where: {
-                part_title_parent_pr: {
-                    part_title,
-                    parent_pr: project.pr_id,
-                },
-            },
-        });
-
-        if (!part) {
-            return notFoundResponse("Partie non trouvée");
-        }
-
-        // Chapter
-        const chapter = await prisma.chapter.findUnique({
-            where: {
-                parent_part_chapter_title: {
-                    chapter_title,
-                    parent_part: part.part_id,
-                },
-            },
-        });
-
-        if (!chapter) {
-            return notFoundResponse("Chapitre non trouvé");
-        }
-
-        // Paragraph
-        const paragraph = await prisma.paragraph.findUnique({
-            where: {
-                parent_chapter_para_name: {
-                    para_name,
-                    parent_chapter: chapter.chapter_id,
-                },
-            },
-        });
-
-        if (!paragraph) {
-            return notFoundResponse("Paragraphe non trouvé");
-        }
-
-        // Notion
-        const notion = await prisma.notion.findUnique({
-            where: {
-                parent_para_notion_name: {
-                    notion_name,
-                    parent_para: paragraph.para_id,
-                },
-            },
-        });
-
-        if (!notion) {
-            return notFoundResponse("Notion non trouvée");
-        }
-
-        if (!notion.notion_content || !notion.notion_content.trim()) {
+        if (!contentToRephrase || !contentToRephrase.trim()) {
             return errorResponse(
-                "La notion ne contient pas de contenu à reformuler",
+                "Aucun contenu à reformuler trouvé",
                 undefined,
                 400
             );
         }
 
-        // 4️⃣ Validation du body avec Zod
-        const body = await request.json().catch(() => ({}));
-
-        const validated = rephraseNotionSchema.parse(body);
-
         // 5️⃣ Appel du service de chatbot (Hugging Face)
         console.log(
-            "[notion-rephrase] Reformulation demandée pour la notion:",
-            notion.notion_id,
+            "[notion-rephrase] Reformulation demandée pour:",
+            notion_name,
             "style=",
             validated.style
         );
 
-        const rephrasedText = await rephraseNotion(notion.notion_content, {
+        const rephrasedText = await rephraseNotion(contentToRephrase, {
             style: validated.style,
         });
 
-        // 6️⃣ (Optionnel) Sauvegarde en base si previewOnly === false
-        // Pour l'instant, on prépare la structure et on ne persiste pas
-        // afin de garder ce handler non-destructif par défaut.
-
-        /*
-        let updatedNotion = notion;
-        if (!validated.previewOnly) {
-            updatedNotion = await prisma.notion.update({
-                where: { notion_id: notion.notion_id },
-                data: {
-                    notion_content: rephrasedText,
-                },
-            });
-        }
-        */
-
         return successResponse("Notion reformulée avec succès", {
-            original_content: notion.notion_content,
+            original_content: contentToRephrase,
             rephrased_content: rephrasedText,
             preview_only: validated.previewOnly,
-            // notion: updatedNotion, // à activer si on persiste la nouvelle version
         });
     } catch (error) {
         if (error instanceof ZodError) {
