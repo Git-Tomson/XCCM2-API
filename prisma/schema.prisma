@@ -45,6 +45,9 @@ model User {
   paragraphs Paragraph[]
   notions    Notion[]
   comments   Comment[]
+  
+  // Templates créés par l'utilisateur
+  templates  Template[]
 
   @@map("users") // Nom de la collection dans notre base MongoDB
 }
@@ -232,8 +235,8 @@ model Invitation {
 
   // Relations
   project Project @relation(fields: [pr_id], references: [pr_id], onDelete: Cascade)
-  guest   User    @relation("GuestInvitations", fields: [guest_id], references: [user_id])
-  host    User    @relation("HostInvitations", fields: [host_id], references: [user_id])
+  guest   User    @relation("GuestInvitations", fields: [guest_id], references: [user_id],  onDelete: Cascade)
+  host    User    @relation("HostInvitations", fields: [host_id], references: [user_id],  onDelete: Cascade)
 
   // CLÉ PRIMAIRE COMPOSITE (Logique)
   // Empêche d'inviter deux fois le même user au même projet
@@ -258,4 +261,27 @@ model Like {
   // Garantit qu'un utilisateur ne peut liker un document qu'une seule fois
   @@unique([liker_id, doc_id])
   @@map("likes")
+}
+
+model Template {
+  template_id   String   @id @default(auto()) @map("_id") @db.ObjectId
+  template_name String   @unique
+  description   String?
+  category      String?
+  is_public     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  // Structure du template stockée en JSON
+  // Contient la hiérarchie complète: Parts -> Chapters -> Paragraphs -> Notions
+  structure Json
+
+  // Créateur du template
+  creator_id String @db.ObjectId
+  creator    User   @relation(fields: [creator_id], references: [user_id])
+
+  // Métadonnées
+  usage_count Int @default(0) // Nombre de fois utilisé
+
+  @@map("templates")
 }

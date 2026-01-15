@@ -233,25 +233,34 @@ export async function GET(request: NextRequest) {
             },
         });
 
-        // Récupère les projets où l'utilisateur a une invitation acceptée
-        const invitedProjects = await prisma.project.findMany({
+        // Ajouter un indicateur 'role' et 'status' pour les projets créés
+        const ownedProjectsWithMeta = ownedProjects.map(p => ({
+            ...p,
+            user_role: 'OWNER',
+            invitation_status: null
+        }));
+
+        // Récupère les invitations de l'utilisateur
+        const invitations = await prisma.invitation.findMany({
             where: {
-                invitations: {
-                    some: {
-                        AND: [
-                            { guest_id: userId },
-                            // { invitation_state: "Accepted" },
-                        ],
-                    },
-                },
+                guest_id: userId
             },
-            orderBy: {
-                created_at: "desc",
-            },
+            include: {
+                project: true
+            }
         });
 
-        // Fusionner les deux listes en supprimant les doublons (un projet ne peut pas être dans les deux)
-        const allProjects = [...ownedProjects, ...invitedProjects];
+        const invitedProjectsWithMeta = invitations.map(invitation => {
+            if (!invitation.project) return null;
+            return {
+                ...invitation.project,
+                user_role: invitation.role, // 'EDITOR' ou 'VIEWER'
+                invitation_status: invitation.invitation_state // 'Pending', 'Accepted', 'Declined'
+            };
+        }).filter(p => p !== null);
+
+        // Fusionner les listes
+        const allProjects = [...ownedProjectsWithMeta, ...invitedProjectsWithMeta];
 
         return successResponse("Projets récupérés avec succès", {
             projects: allProjects,

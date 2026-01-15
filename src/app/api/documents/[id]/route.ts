@@ -2,7 +2,7 @@
  * @fileoverview Route API pour récupérer un document spécifique avec sa structure complète
  *
  * @swagger
- * /api/documents/{doc_id}:
+ * /api/documents/{id}:
  *   get:
  *     tags:
  *       - Documents
@@ -10,7 +10,7 @@
  *     description: Retourne les métadonnées du document ET la structure complète du projet source pour le book-reader
  *     parameters:
  *       - in: path
- *         name: doc_id
+ *         name: id
  *         required: true
  *         schema:
  *           type: string
@@ -33,7 +33,7 @@ import {
 } from "@/utils/api-response";
 
 type RouteParams = {
-    params: Promise<{ doc_id: string }>;
+    params: Promise<{ id: string }>;
 };
 
 /**
@@ -42,9 +42,9 @@ type RouteParams = {
  * @param context - Contexte avec les paramètres de route
  * @returns Réponse JSON avec le document et sa structure
  */
-export async function GET(request: NextRequest, context: RouteParams) {
+export async function GET(_request: NextRequest, context: RouteParams) {
     try {
-        const { doc_id } = await context.params;
+        const { id: doc_id } = await context.params;
 
         console.log(`📖 Récupération du document: ${doc_id}`);
 

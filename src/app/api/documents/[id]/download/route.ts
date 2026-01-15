@@ -1,152 +1,110 @@
 /**
+ * @fileoverview Route API pour télécharger un document et incrémenter le compteur
+ *
  * @swagger
  * /api/documents/{id}/download:
- *   get:
+ *   post:
  *     tags:
  *       - Documents
- *     summary: Télécharger un document PDF
- *     description: Télécharge un document stocké sur Supabase via son identifiant
- *     security:
- *       - bearerAuth: []
+ *     summary: Télécharger un document
+ *     description: Retourne l'URL de téléchargement et incrémente le compteur de téléchargements
  *     parameters:
- *       - name: id
- *         in: path
+ *       - in: path
+ *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *         description: ID du document
  *     responses:
  *       200:
- *         description: Fichier PDF
- *         content:
- *           application/pdf:
- *             schema:
- *               type: string
- *               format: binary
- *       401:
- *         description: Non authentifié
- *       403:
- *         description: Accès refusé
+ *         description: URL de téléchargement retournée avec succès
  *       404:
- *         description: Document introuvable
+ *         description: Document non trouvé
  *       500:
  *         description: Erreur serveur
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
+import {
+    successResponse,
+    notFoundResponse,
+    serverErrorResponse,
+} from "@/utils/api-response";
 
-/* =========================
-   Supabase (serveur)
-========================= */
+type RouteParams = {
+    params: Promise<{ id: string }>;
+};
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+/**
+ * Handler POST pour télécharger un document
+ * Retourne l'URL et incrémente le compteur
+ */
+export async function POST(_request: NextRequest, context: RouteParams) {
+    try {
+        const { id: doc_id } = await context.params;
 
-/* =========================
-   Utilitaire : extraire bucket + path depuis url_content
-========================= */
+        console.log(`📥 Téléchargement du document: ${doc_id}`);
 
-function extractBucketAndPath(urlString: string) {
-  try {
-    const url = new URL(urlString);
+        // Récupère le document
+        const document = await prisma.document.findUnique({
+            where: { doc_id },
+        });
 
-    // /storage/v1/object/sign/{bucket}/{path}
-    const parts = url.pathname.split("/");
+        if (!document) {
+            return notFoundResponse("Document non trouvé");
+        }
 
-    const objectIndex = parts.findIndex(p => p === "object");
-    if (objectIndex === -1) return null;
+        // Incrémenter le compteur de téléchargements
+        const updatedDocument = await prisma.document.update({
+            where: { doc_id },
+            data: { downloaded: { increment: 1 } },
+        });
 
-    const bucket = parts[objectIndex + 2];
-    const path = parts.slice(objectIndex + 3).join("/");
+        return successResponse("Téléchargement autorisé", {
+            url: document.url_content,
+            doc_name: document.doc_name,
+            downloaded: updatedDocument.downloaded,
+        });
 
-    if (!bucket || !path) return null;
-
-    return { bucket, path };
-  } catch {
-    return null;
-  }
+    } catch (error) {
+        console.error("Erreur lors du téléchargement du document:", error);
+        return serverErrorResponse(
+            "Une erreur est survenue lors du téléchargement",
+            error instanceof Error ? error.message : undefined
+        );
+    }
 }
 
-/* =========================
-   GET /api/documents/:id/download
-========================= */
+/**
+ * Handler GET pour télécharger directement le fichier (optionnel)
+ */
+export async function GET(_request: NextRequest, context: RouteParams) {
+    try {
+        const { id: doc_id } = await context.params;
 
-export async function GET(
-  request: NextRequest,
-  context: { params: any }
-) {
-  try {
-    // 🔹 Déballer params
-    const unwrappedParams = await context.params;
-    const docId = unwrappedParams?.id;
-    if (!docId) {
-      return NextResponse.json({ success: false, message: "ID manquant" }, { status: 400 });
+        const document = await prisma.document.findUnique({
+            where: { doc_id },
+        });
+
+        if (!document) {
+            return notFoundResponse("Document non trouvé");
+        }
+
+        // Incrémenter le compteur
+        await prisma.document.update({
+            where: { doc_id },
+            data: { downloaded: { increment: 1 } },
+        });
+
+        // Rediriger vers l'URL du fichier
+        return Response.redirect(document.url_content, 302);
+
+    } catch (error) {
+        console.error("Erreur lors du téléchargement:", error);
+        return serverErrorResponse(
+            "Une erreur est survenue lors du téléchargement",
+            error instanceof Error ? error.message : undefined
+        );
     }
-
-    /* ---------- Auth Bearer ---------- */
-    const authHeader = request.headers.get("Authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ success: false, message: "Non authentifié" }, { status: 401 });
-    }
-    const token = authHeader.split(" ")[1];
-
-    // Ici tu peux ajouter une vérification du token si nécessaire
-    // Exemple basique : juste log pour test
-    console.log("Token reçu :", token);
-
-    /* ---------- DB (Prisma) ---------- */
-    const document = await prisma.document.findUnique({
-      where: { doc_id: docId },
-    });
-
-    if (!document) {
-      return NextResponse.json({ success: false, message: "Document introuvable" }, { status: 404 });
-    }
-
-    /* ---------- URL Supabase ---------- */
-    const extracted = extractBucketAndPath(document.url_content);
-    if (!extracted) {
-      return NextResponse.json({ success: false, message: "URL de stockage invalide" }, { status: 500 });
-    }
-    const { bucket, path } = extracted;
-
-    /* ---------- Supabase Storage ---------- */
-    const { data, error } = await supabase.storage.from(bucket).download(path);
-    if (error || !data) {
-      console.error("Erreur Supabase:", error);
-      return NextResponse.json({ success: false, message: "Fichier introuvable sur Supabase" }, { status: 404 });
-    }
-
-    // 🔹 Conversion en Uint8Array pour binaire
-    const arrayBuffer = await data.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-
-    /* ---------- Stats ---------- */
-    await prisma.document.update({
-      where: { doc_id: document.doc_id },
-      data: { downloaded: { increment: 1 } },
-    });
-
-    /* ---------- Nom du fichier ---------- */
-    const fileName = document.doc_name.endsWith(".pdf") ? document.doc_name : `${document.doc_name}.pdf`;
-
-    console.log(`✅ ${fileName} téléchargé`);
-
-    /* ---------- Réponse binaire PDF ---------- */
-    return new NextResponse(uint8Array, {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Content-Length": uint8Array.length.toString(),
-        "Cache-Control": "private, no-store",
-      },
-    });
-
-  } catch (error) {
-    console.error("Erreur serveur:", error);
-    return NextResponse.json({ success: false, message: "Erreur interne du serveur" }, { status: 500 });
-  }
 }
