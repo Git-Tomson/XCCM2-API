@@ -78,6 +78,7 @@ export const createProjectSchema = z.object({
             /^[a-zA-Z0-9\s\.\-_àâäéèêëïîôùûüÿçÀÂÄÉÈÊËÏÎÔÙÛÜŸÇ]+$/,
             "Le nom du projet ne peut contenir que des lettres, chiffres, espaces, points, tirets et underscores"
         ),
+    overwrite: z.boolean().optional(),
 });
 
 /**

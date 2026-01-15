@@ -235,10 +235,22 @@ export async function GET(
 
         console.log("🔍 Recherche du projet:", { pr_name, userId });
 
-        // Recherche le projet par son nom (quel que soit le propriétaire)
+        // Recherche le projet par son nom ET soit il appartient à l'utilisateur,
+        // soit l'utilisateur y est invité (Accepté).
         const project = await prisma.project.findFirst({
             where: {
                 pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
             include: {
                 owner: {
