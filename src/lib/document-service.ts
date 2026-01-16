@@ -34,7 +34,7 @@ export async function getProjectForExport(
                     invitations: {
                         some: {
                             guest_id: userId,
-                            status: "Accepted",
+                            invitation_state: "Accepted",
                         },
                     },
                 },
