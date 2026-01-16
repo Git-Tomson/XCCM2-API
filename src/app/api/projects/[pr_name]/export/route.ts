@@ -66,6 +66,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import fs from "fs";
+import path from "path";
 import { getProjectForExport, generateDocument } from "@/lib/document-service";
 import { errorResponse, notFoundResponse } from "@/utils/api-response";
 import type { DocumentFormat } from "@/types/document.types";
@@ -110,7 +112,7 @@ export async function GET(request: NextRequest, context: RouteParams) {
                         invitations: {
                             some: {
                                 guest_id: userId,
-                                status: "Accepted",
+                                invitation_state: "Accepted",
                             },
                         },
                     },
@@ -178,6 +180,13 @@ export async function GET(request: NextRequest, context: RouteParams) {
         });
     } catch (error) {
         console.error("Erreur lors de l'exportation du document:", error);
+
+        // Log to file for debugging
+        try {
+            const logEntry = `[${new Date().toISOString()}] ${error instanceof Error ? error.stack : error}\n`;
+            fs.appendFileSync(path.join(process.cwd(), "export_debug.log"), logEntry);
+        } catch (e) { }
+
         return errorResponse(
             "Une erreur est survenue lors de l'exportation du document",
             error instanceof Error ? error.message : undefined,
