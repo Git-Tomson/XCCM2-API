@@ -30,6 +30,7 @@ function generatePrintableHTML(project: ProjectForExport): string {
     const css = `
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+            @import url('https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css');
 
             @media print {
                 @page {
@@ -289,7 +290,68 @@ function generatePrintableHTML(project: ProjectForExport): string {
                 border-radius: 8px;
                 margin: 1.5rem 0;
             }
+
+            /* Pedagogical Blocks Styling */
+            .note-block {
+                background: #fdf2f4;
+                border-left: 4px solid #99334C;
+                padding: 1.5rem;
+                margin: 1.5rem 0;
+                border-radius: 0 8px 8px 0;
+            }
+            .note-block-header {
+                font-weight: bold;
+                color: #99334C;
+                font-size: 0.8rem;
+                text-transform: uppercase;
+                margin-bottom: 0.5rem;
+            }
+            .math-block {
+                display: flex;
+                justify-content: center;
+                margin: 2rem 0;
+                padding: 1rem;
+                background: #f8fafc;
+                border-radius: 8px;
+            }
+            .discovery-hint {
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                margin: 1.5rem 0;
+                overflow: hidden;
+            }
+            .discovery-hint-header {
+                background: #f8fafc;
+                padding: 0.75rem 1rem;
+                font-weight: bold;
+                color: #475569;
+                font-size: 0.9rem;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            .discovery-hint-content {
+                padding: 1rem;
+            }
         </style>
+        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+        <script>
+            document.addEventListener("DOMContentLoaded", function() {
+                // Render MathBlocks
+                const mathNodes = document.querySelectorAll('[data-type="math-block"], [data-type="math-inline"], .math-block, .math-inline');
+                mathNodes.forEach(node => {
+                    const tex = node.getAttribute('data-tex') || node.textContent || '';
+                    const inline = node.getAttribute('data-type') === 'math-inline' || node.classList.contains('math-inline');
+                    
+                    try {
+                        node.innerHTML = katex.renderToString(tex, {
+                            throwOnError: false,
+                            displayMode: !inline
+                        });
+                    } catch (e) {
+                        console.error('KaTeX rendering error:', e);
+                    }
+                });
+            });
+        </script>
     `;
 
     let bodyContent = "";

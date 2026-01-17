@@ -14,7 +14,7 @@ import {
     PageBreak,
 } from "docx";
 import type { ProjectForExport } from "@/types/document.types";
-import { parseMarkdownToSegments } from "./markdown-parser";
+import { parseMarkdownToSegments, htmlToPlainText } from "./markdown-parser";
 
 /**
  * Génère un document DOCX à partir d'un projet
@@ -158,24 +158,18 @@ export async function generateDOCX(project: ProjectForExport): Promise<Buffer> {
                     }
 
                     // Contenu de la notion
-                    const segments = parseMarkdownToSegments(notion.notion_content);
-                    const paragraphTextRuns: TextRun[] = [];
-
-                    segments.forEach((segment) => {
-                        paragraphTextRuns.push(
-                            new TextRun({
-                                text: segment.text,
-                                bold: segment.bold,
-                                italics: segment.italic,
-                                underline: segment.underline ? {} : undefined,
-                                strike: segment.strikethrough,
-                            })
-                        );
-                    });
+                    const plainText = htmlToPlainText(notion.notion_content);
+                    const lines = plainText.split('\n');
+                    const children = lines.map((line, index) =>
+                        new TextRun({
+                            text: line,
+                            break: index > 0 ? 1 : 0
+                        })
+                    );
 
                     content.push(
                         new Paragraph({
-                            children: paragraphTextRuns,
+                            children,
                             spacing: { after: 200 },
                             alignment: AlignmentType.JUSTIFIED,
                         })

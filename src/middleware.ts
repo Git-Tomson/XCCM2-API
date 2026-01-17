@@ -32,8 +32,16 @@ const PUBLIC_ROUTES: string[] = [
     "/api/health",
     "/api/docs",
     "/docs",
+<<<<<<< HEAD
     "/api/documents",            // Bibliothèque publique (GET liste + GET par ID)
     "/api/invitations/",         // Consultation invitation par token (GET)
+=======
+    "/api/documents",           // Bibliothèque publique (GET liste + GET par ID)
+    "/api/invitations/",        // Consultation invitation par token (GET)
+    "/api/users/",              // Profils publics
+    "/api/creators/top",        // Top créateurs
+    "/api/community/feed",      // Flux communautaire
+>>>>>>> ffdfb7c2060214897b2b5f20f577692f57a5aed6
 ];
 
 /**
@@ -78,9 +86,17 @@ export async function middleware(request: NextRequest) {
     });
 
     /**
+<<<<<<< HEAD
      * 4️⃣ Laisse passer les routes publiques et NextAuth sans authentification
+=======
+     * 4️⃣ Laisse passer les routes publiques sans authentification
+     * Sauf les actions spécifiques sur les invitations qui nécessitent un userId (accept, decline, revoke)
+>>>>>>> ffdfb7c2060214897b2b5f20f577692f57a5aed6
      */
-    if (PUBLIC_ROUTES.some((route: string) => pathname.startsWith(route))) {
+    const isPublicRoute = PUBLIC_ROUTES.some((route: string) => pathname.startsWith(route));
+    const isInvitationAction = pathname.includes("/accept") || pathname.includes("/decline") || pathname.includes("/revoke");
+
+    if (isPublicRoute && !isInvitationAction) {
         return response;
     }
 

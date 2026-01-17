@@ -31,21 +31,34 @@ const CACHE_TTL = 1800; // 30 minutes
  * @param request - Requête Next.js
  * @returns Réponse JSON avec la liste des documents
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
     try {
         console.log("📚 Récupération de tous les documents publiés");
 
+        // Récupérer les paramètres de pagination
+        const searchParams = request.nextUrl.searchParams;
+        const page = parseInt(searchParams.get('page') || '1', 10);
+        const limit = parseInt(searchParams.get('limit') || '20', 10);
+        const skip = (page - 1) * limit;
+
+        const cacheKey = `library:all_documents:page${page}:limit${limit}`;
+
         // 1. Essayer de récupérer le résultat depuis le cache Redis
-        const cachedData = await cacheService.get<{ documents: any[], count: number }>(DOCUMENTS_CACHE_KEY);
+        const cachedData = await cacheService.get<{ documents: any[], count: number, totalCount: number, hasMore: boolean }>(cacheKey);
         if (cachedData) {
-            console.log("⚡ Cache hit for library documents");
+            console.log("⚡ Cache hit for library documents (page " + page + ")");
             return successResponse("Documents récupérés avec succès (cache)", cachedData);
         }
 
         console.log("🐢 Cache miss, querying MongoDB...");
 
-        // 2. Récupérer tous les documents avec les infos du projet
+        // 2. Compter le total de documents
+        const totalCount = await prisma.document.count();
+
+        // 3. Récupérer les documents avec pagination
         const documents = await prisma.document.findMany({
+            skip,
+            take: limit,
             orderBy: { published_at: "desc" },
             include: {
                 project: {
@@ -61,7 +74,7 @@ export async function GET(_request: NextRequest) {
             },
         });
 
-        // 3. Formater les documents pour le frontend
+        // 4. Formater les documents pour le frontend
         const formattedDocuments = documents.map((doc) => ({
             doc_id: doc.doc_id,
             doc_name: doc.doc_name,
@@ -83,10 +96,13 @@ export async function GET(_request: NextRequest) {
         const result = {
             documents: formattedDocuments,
             count: formattedDocuments.length,
+            totalCount,
+            hasMore: skip + limit < totalCount,
+            currentPage: page,
         };
 
-        // 4. Mettre en cache pour les prochaines requêtes
-        await cacheService.set(DOCUMENTS_CACHE_KEY, result, CACHE_TTL);
+        // 5. Mettre en cache pour les prochaines requêtes
+        await cacheService.set(cacheKey, result, CACHE_TTL);
 
         return successResponse("Documents récupérés avec succès", result);
 

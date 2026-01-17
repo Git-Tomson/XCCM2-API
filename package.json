@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@babel/runtime-corejs3": "^7.28.6",
-    "@huggingface/inference": "^4.13.8",
+    "@huggingface/inference": "^4.13.9",
     "@prisma/client": "^6.19.1",
     "@supabase/supabase-js": "^2.90.1",
     "@types/nodemailer": "^7.0.5",
@@ -34,6 +34,7 @@
     "react-dom": "19.2.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-react": "^5.31.0",
+    "uuid": "^13.0.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {
@@ -46,6 +47,7 @@
     "@types/react-dom": "^19",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-react": "^5.18.0",
+    "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
