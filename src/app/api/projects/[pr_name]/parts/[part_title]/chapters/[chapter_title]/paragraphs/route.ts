@@ -141,6 +141,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { createParagraphSchema } from "@/utils/validation";
+import { realtimeService } from "@/services/realtime-service";
 import {
     successResponse,
     errorResponse,
@@ -184,13 +185,21 @@ export async function POST(request: NextRequest, context: RouteParams) {
         const part_title = decodeURIComponent(encodedPartTitle);
         const chapter_title = decodeURIComponent(encodedChapterTitle);
 
-        // Vérifie que le projet existe
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -265,31 +274,27 @@ export async function POST(request: NextRequest, context: RouteParams) {
             );
         }
 
-        // Vérifier si le numéro est logique
-
-        const countParagraphs = await prisma.paragraph.count({
-            where: {
-                parent_chapter: chapter.chapter_id,
-            }
-        });
-
-        if(validatedData.para_number !== countParagraphs +1 ){
-            return errorResponse(
-                "Votre chapitre ne compte que " + countParagraphs
-                + " paragraphes du cou votre numéro de paragraph est illogique",
-                undefined,
-                409
-            );
-        }
-
         // Création du paragraphe
         const paragraph = await prisma.paragraph.create({
             data: {
                 para_name: validatedData.para_name,
                 para_number: validatedData.para_number,
                 parent_chapter: chapter.chapter_id,
+                owner_id: userId,
             },
         });
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'paragraph',
+                action: 'created',
+                paraId: paragraph.para_id,
+                chapterTitle: chapter_title
+            }
+        );
 
         return successResponse("Paragraphe créé avec succès", { paragraph }, 201);
     } catch (error) {
@@ -337,13 +342,21 @@ export async function GET(request: NextRequest, context: RouteParams) {
         const part_title = decodeURIComponent(encodedPartTitle);
         const chapter_title = decodeURIComponent(encodedChapterTitle);
 
-        // Vérifie que le projet existe
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 

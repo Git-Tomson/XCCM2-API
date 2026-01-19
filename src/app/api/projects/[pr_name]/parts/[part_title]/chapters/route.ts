@@ -129,6 +129,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { createChapterSchema } from "@/utils/validation";
+import { realtimeService } from "@/services/realtime-service";
 //import { renumberChaptersAfterInsert } from "@/utils/granule-helpers";
 import {
     successResponse,
@@ -162,13 +163,21 @@ export async function POST(request: NextRequest, context: RouteParams) {
         const pr_name = decodeURIComponent(encodedPrName);
         const part_title = decodeURIComponent(encodedPartTitle);
 
-        // Vérifie que le projet existe
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -238,7 +247,7 @@ export async function POST(request: NextRequest, context: RouteParams) {
             }
         });
 
-        if(validatedData.chapter_number !== countChapters +1 ){
+        if (validatedData.chapter_number !== countChapters + 1) {
             return errorResponse(
                 "Votre partie ne compte que " + countChapters
                 + " chapitres du cou votre numéro de chapitres est illogique",
@@ -253,8 +262,21 @@ export async function POST(request: NextRequest, context: RouteParams) {
                 chapter_title: validatedData.chapter_title,
                 chapter_number: validatedData.chapter_number,
                 parent_part: part.part_id,
+                owner_id: userId,
             },
         });
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'chapter',
+                action: 'created',
+                chapterId: chapter.chapter_id,
+                partTitle: part_title
+            }
+        );
 
         return successResponse("Chapitre créé avec succès", { chapter }, 201);
     } catch (error) {
@@ -297,13 +319,21 @@ export async function GET(request: NextRequest, context: RouteParams) {
         const pr_name = decodeURIComponent(encodedPrName);
         const part_title = decodeURIComponent(encodedPartTitle);
 
-        // Vérifie que le projet existe
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 

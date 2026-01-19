@@ -173,7 +173,7 @@ export function prepareInvitationEmailData(
     invitation: any,
     baseUrl: string
 ): InvitationEmailData {
-    const invitationLink = `${baseUrl}/${invitation.invitation_token}/view_invitation`;
+    const invitationLink = `${baseUrl}/invitations/${invitation.invitation_token}`;
 
     return {
         guestEmail: invitation.guest.email,

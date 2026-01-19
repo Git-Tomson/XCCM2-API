@@ -189,6 +189,8 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { updateNotionSchema } from "@/utils/validation";
+import { realtimeService } from "@/services/realtime-service";
+import { cacheService } from "@/services/cache-service";
 import {
     successResponse,
     errorResponse,
@@ -237,13 +239,21 @@ export async function GET(request: NextRequest, context: RouteParams) {
         const para_name = decodeURIComponent(encodedParaName);
         const notion_name = decodeURIComponent(encodedNotionName);
 
-        // Vérifie que le projet existe
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -345,12 +355,21 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
         const para_name = decodeURIComponent(encodedParaName);
         const currentName = decodeURIComponent(encodedNotionName);
 
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -436,7 +455,7 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
             }
         }
 
-        // Vérifie si le numéro nom existe déjà (si changement de numéro)
+        // Vérifie si le numéro existe déjà (si changement de numéro)
         if (
             validatedData.notion_number &&
             validatedData.notion_number !== existingNotion.notion_number
@@ -450,10 +469,11 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 },
             });
 
-            if (!duplicateNumber) {
+            // CORRECTION: Si le numéro existe DÉJÀ, c'est une erreur (logique inversée corrigée)
+            if (duplicateNumber) {
                 return errorResponse(
-                    "Le numéro est illogique car votre chapitre comporte moins de "
-                    + validatedData.notion_number + " notions",
+                    "Le numéro de notion " + validatedData.notion_number +
+                    " est déjà utilisé dans ce paragraphe",
                     undefined,
                     409
                 );
@@ -474,7 +494,7 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
 
         await renumberNotionsAfterUpdate(existingNotion.parent_para,
             existingNotion.notion_number,
-            validatedData.notion_number?validatedData.notion_number:existingNotion.notion_number,
+            validatedData.notion_number ? validatedData.notion_number : existingNotion.notion_number,
             existingNotion.notion_id);
 
         // Mise à jour de la notion
@@ -508,6 +528,22 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
             );
         }
          */
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'NOTION_UPDATED',
+            {
+                notionId: updatedNotion.notion_id,
+                notionName: updatedNotion.notion_name,
+                partTitle: part_title,
+                chapterTitle: chapter_title,
+                paraName: para_name
+            }
+        );
+
+        // 🗑️ Invalider le cache de la structure
+        await cacheService.delByPattern(`project:structure:${pr_name}:*`);
 
         return successResponse("Notion modifiée avec succès", {
             notion: updatedNotion,
@@ -561,13 +597,21 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
         const para_name = decodeURIComponent(encodedParaName);
         const notion_name = decodeURIComponent(encodedNotionName);
 
-        // Vérifie que le projet existe
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -645,6 +689,18 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
                 existingNotion.notion_number
             );
         }
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'notion',
+                action: 'deleted',
+                notionId: existingNotion.notion_id,
+                paraName: para_name
+            }
+        );
 
         return successResponse("Notion supprimée avec succès");
 

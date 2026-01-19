@@ -120,6 +120,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { createPartSchema } from "@/utils/validation";
+import { realtimeService } from "@/services/realtime-service";
 //import { renumberPartsAfterInsert } from "@/utils/granule-helpers";
 import {
     successResponse,
@@ -151,13 +152,21 @@ export async function POST(request: NextRequest, context: RouteParams) {
         const { pr_name: encodedName } = await context.params;
         const pr_name = decodeURIComponent(encodedName);
 
-        // Vérifie que le projet existe et appartient à l'utilisateur
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -216,7 +225,7 @@ export async function POST(request: NextRequest, context: RouteParams) {
         });
 
         //Le numéro de la nouvelle partie doit etre le successeur de countParts
-        if(validatedData.part_number !== countParts + 1) {
+        if (validatedData.part_number !== countParts + 1) {
             return errorResponse(
                 "Votre projet ne compte que " + countParts
                 + " parties du cou votre numéro de partie est illogique",
@@ -233,8 +242,20 @@ export async function POST(request: NextRequest, context: RouteParams) {
                 part_intro: validatedData.part_intro || null,
                 part_number: validatedData.part_number,
                 parent_pr: project.pr_id,
+                owner_id: userId,
             },
         });
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'part',
+                action: 'created',
+                partId: part.part_id
+            }
+        );
 
         return successResponse("Partie créée avec succès", { part }, 201);
     } catch (error) {
@@ -275,13 +296,21 @@ export async function GET(request: NextRequest, context: RouteParams) {
         const { pr_name: encodedName } = await context.params;
         const pr_name = decodeURIComponent(encodedName);
 
-        // Vérifie que le projet existe et appartient à l'utilisateur
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 

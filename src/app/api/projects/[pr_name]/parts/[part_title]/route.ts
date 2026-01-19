@@ -134,6 +134,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { updatePartSchema } from "@/utils/validation";
+import { realtimeService } from "@/services/realtime-service";
 import {
     renumberPartsAfterDelete,
     renumberPartsAfterUpdate,
@@ -170,13 +171,21 @@ export async function GET(request: NextRequest, context: RouteParams) {
         const pr_name = decodeURIComponent(encodedPrName);
         const part_title = decodeURIComponent(encodedPartTitle);
 
-        // Vérifie que le projet existe
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -227,12 +236,21 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
         const pr_name = decodeURIComponent(encodedPrName);
         const currentTitle = decodeURIComponent(encodedPartTitle);
 
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -293,11 +311,11 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 },
             });
 
-            if (!duplicateNumber) {
-                // réponse 409
+            // CORRECTION: Si le numéro existe DÉJÀ, c'est une erreur (logique inversée corrigée)
+            if (duplicateNumber) {
                 return errorResponse(
-                    "Votre projet a moins de " + validatedData.part_number +
-                    " parties! Votre nouveau numéro est illogique",
+                    "Le numéro de partie " + validatedData.part_number +
+                    " est déjà utilisé dans ce projet",
                     undefined,
                     409
                 );
@@ -318,7 +336,7 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
 
         //Décalage de numéros des autres parties
         await renumberPartsAfterUpdate(existingPart.parent_pr, existingPart.part_number,
-            validatedData.part_number? validatedData.part_number: existingPart.part_number,
+            validatedData.part_number ? validatedData.part_number : existingPart.part_number,
             existingPart.part_id);
 
         // Mise à jour de la partie
@@ -338,6 +356,17 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 }),
             },
         });
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'part',
+                action: 'updated',
+                partId: updatedPart.part_id
+            }
+        );
 
         return successResponse("Partie modifiée avec succès", {
             part: updatedPart,
@@ -382,12 +411,21 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
         const pr_name = decodeURIComponent(encodedPrName);
         const part_title = decodeURIComponent(encodedPartTitle);
 
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -419,6 +457,17 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
 
         // Renumérotation des parties restantes
         await renumberPartsAfterDelete(project.pr_id, deletedNumber);
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'part',
+                action: 'deleted',
+                partId: existingPart.part_id
+            }
+        );
 
         return successResponse("Partie supprimée avec succès");
     } catch (error) {

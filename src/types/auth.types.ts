@@ -16,6 +16,8 @@ export interface User {
     firstname: string;
     org?: string | null;
     occupation?: string | null;
+    profile_picture?: string | null;
+    role?: string;
     created_at: Date;
     updated_at: Date;
 }
@@ -30,14 +32,19 @@ export interface PublicUser {
     firstname: string;
     org?: string | null;
     occupation?: string | null;
+    profile_picture?: string | null;
+    role?: string;
 }
 
 /**
  * Payload du JSON Web Token
+ * Contient les informations essentielles de l'utilisateur pour éviter les requêtes DB
  */
 export interface JWTPayload extends JosePayload {
     userId: string;
     email: string;
+    role?: string;
+    profile_picture?: string | null;
 }
 
 /**

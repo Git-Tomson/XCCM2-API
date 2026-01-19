@@ -169,6 +169,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { updateParagraphSchema } from "@/utils/validation";
 import { renumberParagraphsAfterDelete, renumberParagraphsAfterUpdate } from "@/utils/granule-helpers";
+import { realtimeService } from "@/services/realtime-service";
 import {
     successResponse,
     errorResponse,
@@ -213,13 +214,21 @@ export async function GET(request: NextRequest, context: RouteParams) {
         const chapter_title = decodeURIComponent(encodedChapterTitle);
         const para_name = decodeURIComponent(encodedParaName);
 
-        // Vérifie que le projet existe
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -305,12 +314,21 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
         const chapter_title = decodeURIComponent(encodedChapterTitle);
         const currentName = decodeURIComponent(encodedParaName);
 
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -394,10 +412,11 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 },
             });
 
-            if (!duplicateNumber) {
+            // CORRECTION: Si le numéro existe DÉJÀ, c'est une erreur (logique inversée corrigée)
+            if (duplicateNumber) {
                 return errorResponse(
-                    "Votre chapitre a moins de " + validatedData.para_number
-                    + " paragraphes donc le nouveau numéro est illogique",
+                    "Le numéro de paragraphe " + validatedData.para_number +
+                    " est déjà utilisé dans ce chapitre",
                     undefined,
                     409
                 );
@@ -418,7 +437,7 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
 
         await renumberParagraphsAfterUpdate(existingParagraph.parent_chapter,
             existingParagraph.para_number,
-            validatedData.para_number?validatedData.para_number:existingParagraph.para_number,
+            validatedData.para_number ? validatedData.para_number : existingParagraph.para_number,
             existingParagraph.para_id);
 
 
@@ -436,6 +455,18 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 }),
             },
         });
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'paragraph',
+                action: 'updated',
+                paraId: updatedParagraph.para_id,
+                chapterTitle: chapter_title
+            }
+        );
 
         return successResponse("Paragraphe modifié avec succès", {
             paragraph: updatedParagraph,
@@ -487,12 +518,21 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
         const chapter_title = decodeURIComponent(encodedChapterTitle);
         const para_name = decodeURIComponent(encodedParaName);
 
-        const project = await prisma.project.findUnique({
+        // Vérifie que le projet existe et que l'utilisateur y a accès
+        const project = await prisma.project.findFirst({
             where: {
-                pr_name_owner_id: {
-                    pr_name,
-                    owner_id: userId,
-                },
+                pr_name: pr_name,
+                OR: [
+                    { owner_id: userId },
+                    {
+                        invitations: {
+                            some: {
+                                guest_id: userId,
+                                invitation_state: "Accepted"
+                            }
+                        }
+                    }
+                ]
             },
         });
 
@@ -548,6 +588,18 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
 
         // Renumérotation des chapitres restants
         await renumberParagraphsAfterDelete(chapter.chapter_id, existingParagraph.para_number);
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'paragraph',
+                action: 'deleted',
+                paraId: existingParagraph.para_id,
+                chapterTitle: chapter_title
+            }
+        );
 
         return successResponse("Paragraphe supprimé avec succès");
 
