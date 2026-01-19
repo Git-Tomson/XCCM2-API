@@ -169,6 +169,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { updateParagraphSchema } from "@/utils/validation";
 import { renumberParagraphsAfterDelete, renumberParagraphsAfterUpdate } from "@/utils/granule-helpers";
+import { realtimeService } from "@/services/realtime-service";
 import {
     successResponse,
     errorResponse,
@@ -411,10 +412,11 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 },
             });
 
-            if (!duplicateNumber) {
+            // CORRECTION: Si le numéro existe DÉJÀ, c'est une erreur (logique inversée corrigée)
+            if (duplicateNumber) {
                 return errorResponse(
-                    "Votre chapitre a moins de " + validatedData.para_number
-                    + " paragraphes donc le nouveau numéro est illogique",
+                    "Le numéro de paragraphe " + validatedData.para_number +
+                    " est déjà utilisé dans ce chapitre",
                     undefined,
                     409
                 );
@@ -453,6 +455,18 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 }),
             },
         });
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'paragraph',
+                action: 'updated',
+                paraId: updatedParagraph.para_id,
+                chapterTitle: chapter_title
+            }
+        );
 
         return successResponse("Paragraphe modifié avec succès", {
             paragraph: updatedParagraph,
@@ -574,6 +588,18 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
 
         // Renumérotation des chapitres restants
         await renumberParagraphsAfterDelete(chapter.chapter_id, existingParagraph.para_number);
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'paragraph',
+                action: 'deleted',
+                paraId: existingParagraph.para_id,
+                chapterTitle: chapter_title
+            }
+        );
 
         return successResponse("Paragraphe supprimé avec succès");
 

@@ -11,10 +11,32 @@ import type { NextRequest } from "next/server";
 import { verifyToken, extractTokenFromHeader } from "@/lib/auth";
 
 /**
- * Récupère les headers CORS dynamiquement pour autoriser l'origine de la requête
+ * Liste des origines autorisées pour CORS
+ * Configure via ALLOWED_ORIGINS dans .env (séparées par des virgules)
+ */
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",").map(origin => origin.trim())
+    : [
+        "http://localhost:3001",      // Frontend dev
+        "http://localhost:3000",      // Backend dev
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:3000",
+    ];
+
+/**
+ * Récupère les headers CORS en vérifiant que l'origine est autorisée
+ * SÉCURITÉ: N'accepte QUE les origines whitelistées
  */
 function getCorsHeaders(request: NextRequest) {
-    const origin = request.headers.get("origin") || "*";
+    const requestOrigin = request.headers.get("origin");
+
+    // Vérification de l'origine
+    const isAllowedOrigin = requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin);
+    const origin = isAllowedOrigin ? requestOrigin : ALLOWED_ORIGINS[0];
+
+    if (requestOrigin && !isAllowedOrigin) {
+        console.warn(`⚠️ Origine CORS non autorisée: ${requestOrigin}`);
+    }
 
     return {
         "Access-Control-Allow-Origin": origin,
@@ -28,14 +50,15 @@ function getCorsHeaders(request: NextRequest) {
  * Routes publiques accessibles sans authentification
  */
 const PUBLIC_ROUTES: string[] = [
-    "/api/auth",                 // NextAuth routes (signin, signout, callback, etc)
+    // Auth routes (excluding /api/auth/me which requires protection)
     "/api/auth/login",
     "/api/auth/register",
-    "/api/auth/oauth/google",      // OAuth Google initiation
-    "/api/auth/oauth/microsoft",   // OAuth Microsoft initiation
-    "/api/auth/callback/google",   // OAuth Google callback
-    "/api/auth/callback/microsoft", // OAuth Microsoft callback
-    "/api/auth/oauth/providers",   // List providers
+    "/api/auth/oauth",             // Covers all oauth sub-routes
+    "/api/auth/callback",          // Covers all callback sub-routes
+    "/api/auth/providers",
+
+    // Other public routes
+    "/auth",
     "/api/health",
     "/api/docs",
     "/docs",
@@ -94,7 +117,13 @@ export async function middleware(request: NextRequest) {
      * 4️⃣ Laisse passer les routes publiques sans authentification
      * Sauf les actions spécifiques sur les invitations qui nécessitent un userId (accept, decline, revoke)
      */
-    if (PUBLIC_ROUTES.some((route: string) => pathname.startsWith(route))) {
+    const isPublicRoute = PUBLIC_ROUTES.some((route: string) => pathname.startsWith(route));
+    const isInvitationAction = pathname.startsWith("/api/invitations/") &&
+        (pathname.includes("/accept") ||
+            pathname.includes("/decline") ||
+            pathname.includes("/revoke"));
+
+    if (isPublicRoute && !isInvitationAction) {
         return response;
     }
 

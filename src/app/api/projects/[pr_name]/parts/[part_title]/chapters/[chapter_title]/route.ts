@@ -149,6 +149,7 @@
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { updateChapterSchema } from "@/utils/validation";
+import { realtimeService } from "@/services/realtime-service";
 import {
     renumberChaptersAfterDelete,
     renumberChaptersAfterUpdate,
@@ -366,11 +367,11 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 },
             });
 
-            if (!duplicateNumber) {
-                // Réponse 409
+            // CORRECTION: Si le numéro existe DÉJÀ, c'est une erreur (logique inversée corrigée)
+            if (duplicateNumber) {
                 return errorResponse(
-                    "Le nouveau numéro est illogique car votre partie a moins de "
-                    + validatedData.chapter_number + " chapitres",
+                    "Le numéro de chapitre " + validatedData.chapter_number +
+                    " est déjà utilisé dans cette partie",
                     undefined,
                     409
                 );
@@ -407,6 +408,18 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
                 }),
             },
         });
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'chapter',
+                action: 'updated',
+                chapterId: updatedChapter.chapter_id,
+                partTitle: part_title
+            }
+        );
 
         return successResponse("Chapitre modifié avec succès", {
             chapter: updatedChapter,
@@ -515,6 +528,18 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
 
         // Renumérotation des chapitres restants
         await renumberChaptersAfterDelete(part.part_id, deletedNumber);
+
+        // 📡 Broadcast temps réel
+        await realtimeService.broadcastStructureChange(
+            pr_name,
+            'STRUCTURE_CHANGED',
+            {
+                type: 'chapter',
+                action: 'deleted',
+                chapterId: existingChapter.chapter_id,
+                partTitle: part_title
+            }
+        );
 
         return successResponse("Chapitre supprimé avec succès");
     } catch (error) {
