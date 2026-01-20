@@ -26,9 +26,6 @@ const nextConfig: NextConfig = {
     typescript: {
         ignoreBuildErrors: true,
     },
-    eslint: {
-        ignoreDuringBuilds: true,
-    },
 
     // En-têtes HTTP personnalisés (laissés vides car gérés par le middleware)
     async headers() {
