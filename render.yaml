@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: xccm2-synapse
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run synapse
+    envVars:
+      - key: PORT
+        value: 1234
+      - key: DATABASE_URL
+        fromDatabase:
+          name: xccm2-db
+          property: connectionString
+      - key: JWT_SECRET
+        sync: false
+      - key: NODE_VERSION
+        value: 20
